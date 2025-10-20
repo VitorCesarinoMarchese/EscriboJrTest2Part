@@ -9,7 +9,6 @@ type Request_Payload = {
   age_group: string;
   resources: string;
   duration_minutes: number;
-  user_id: string;
 };
 
 type Ai_Output = {
@@ -74,7 +73,6 @@ Deno.serve(async (req): Promise<Response> => {
     age_group,
     resources,
     duration_minutes,
-    user_id,
   } = payload;
 
   if (
@@ -84,8 +82,7 @@ Deno.serve(async (req): Promise<Response> => {
     !subject ||
     !age_group ||
     !resources ||
-    !duration_minutes ||
-    !user_id
+    !duration_minutes
   ) {
     return badRequest("Missing required fields in request payload");
   }
@@ -97,29 +94,32 @@ Deno.serve(async (req): Promise<Response> => {
 
   const ai = new GoogleGenAI({ apiKey: Deno.env.get("GEMINI_API_KEY") });
 
-  const prompt = `
-    Leia atentamente as variáveis fornecidas e valide cada uma antes de gerar a saída. se alguma variável estiver ausente ou inválida, informe o erro claramente.
+  const systemInstruction =
+    `Seu nome é Matheus e você e um assistente pedagógico especializado em criar planos de aula lúdicos, você sempre busca facilitar o aprendizado de seus alunos com explicacoes de facil entendimento e bem detalhadas. você sempre monta suas explicacoes seguindo a risca as regras do bncc.
 
-    variáveis:
-
-    * ${sanitize(main_theme)}: tema principal da atividade
-    * ${sanitize(secondary_theme)}: tema secundário da atividade
-    * ${sanitize(subject)}: matéria escolar
-    * ${
-    sanitize(objective)
-  }: objetivo de aprendizagem (deve estar alinhado à bncc)
-    * ${sanitize(age_group)}: faixa etária ou série escolar
-    * ${sanitize(resources)}: recursos disponíveis para a atividade
-    * ${duration_minutes} : duração da atividade em minutos (número inteiro positivo)
-
-    a tarefa do assistente:
+    Visando sua responsabiliade e de gerar um plano de aula para um professor iniciante que busca auxilio para iniciar na carreira, gere planos de aula personalizados seguindo suas regras internas. Para construir esse plano siga obrigatoriamente a estrutura abaixo:
 
     1. criar uma introdução lúdica que apresente o tema de forma criativa e engajadora.
     2. elaborar um passo a passo detalhado da atividade, incluindo instruções claras e sequenciais.
     3. gerar uma rubrica de avaliação, com critérios objetivos que permitam à professora avaliar o aprendizado.
     4. garantir que o objetivo de aprendizagem esteja alinhado à bncc.
 
-    formato de saída: json válido, em um único bloco de texto, com a seguinte estrutura:
+    Para construir esse plano de aula, você deve se basear obrigatoriamente nas variáveis abaixo:
+
+    * tema principal da atividade:${sanitize(main_theme)}
+    * tema secundário da atividade: ${sanitize(secondary_theme)}
+    * matéria escolar: ${sanitize(subject)}
+    *objetivo de aprendizagem (deve estar alinhado à bncc):  ${
+      sanitize(objective)
+    }
+    * faixa etária ou série escolar:  ${sanitize(age_group)}
+    * recursos disponíveis para a atividade:  ${sanitize(resources)}
+    * duração da atividade em minutos (número inteiro positivo):  ${duration_minutes} minutos
+
+    Apos a analise e criacao do plano de aula personalizado o seu Output deve seguir obrigatoriamente o seguinte formato:
+    (Nao e permitido devolver qualquer Output que nao siga o formato abaixo)
+
+    json válido, em um único bloco de texto, com a seguinte estrutura:
 
     {
       "intro_ludica": "texto da introdução criativa e engajadora",
@@ -132,15 +132,21 @@ Deno.serve(async (req): Promise<Response> => {
     * se houver algum erro ou variável inválida, preencha apenas o campo "mensagem_erro" com a descrição do problema e deixe os demais campos nulos ou vazios.
     * certifique-se de que o json seja sempre parseável.
     * o texto deve ser claro, didático e adequado à faixa etária indicada.
-  `;
+
+`;
+
+  const prompt = `
+  Gere um plano de aulas personalizados seguindo as suas regras internas.
+`;
 
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
       config: {
-        systemInstruction:
-          `você é um assistente pedagógico especializado em criar planos de aula lúdicos e alinhados à bncc.`,
+        temperature: 0.8,
+        topP: 1,
+        systemInstruction,
         maxOutputTokens: 3000,
         thinkingConfig: {
           thinkingBudget: 0,
