@@ -103,5 +103,26 @@ USING (auth.uid() = user_id);
 ### `User` RLS
 
 ```sql
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 
+CREATE POLICY "Individuals can view their own profile"
+ON users
+FOR SELECT
+USING (auth.uid() = id);
+
+CREATE POLICY "Individuals can update their own profile"
+ON users
+FOR UPDATE
+USING (auth.uid() = id)
+WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Individuals can insert their own profile"
+ON users
+FOR INSERT
+WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "No delete by users"
+ON users
+FOR DELETE
+USING (false);
 ```
