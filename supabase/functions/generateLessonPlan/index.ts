@@ -141,7 +141,10 @@ Deno.serve(async (req): Promise<Response> => {
       config: {
         systemInstruction:
           `você é um assistente pedagógico especializado em criar planos de aula lúdicos e alinhados à bncc.`,
-        maxOutputTokens: 800,
+        maxOutputTokens: 3000,
+        thinkingConfig: {
+          thinkingBudget: 0,
+        },
       },
     });
 
