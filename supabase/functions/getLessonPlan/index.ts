@@ -2,23 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { z } from "npm:zod";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const LessonPlanPayloadSchema = z.object({
-  main_theme: z.string().min(1, "Main theme cannot be empty"),
-  secondary_theme: z.string().min(1, "Secondary theme cannot be empty"),
-  objective: z.string().min(1, "Objective cannot be empty"),
-  subject: z.string().min(1, "Subject cannot be empty"),
-  age_group: z.string().min(1, "Age group cannot be empty"),
-  resources: z.string().min(1, "Resources cannot be empty"),
-  duration_minutes: z.number().int().positive(
-    "Duration must be a positive integer",
-  ),
-  introduction: z.string().optional(),
-  steps: z.string().optional(),
-  evaluation_rubric: z.string().optional(),
-  user_id: z.string().uuid("Invalid user ID format"),
-});
-
-type LessonPlanPayload = z.infer<typeof LessonPlanPayloadSchema>;
+const LessonPlanIdSchema = z.string().uuid("Invalid lesson plan ID format");
 
 interface ErrorResponse {
   message: string;
@@ -56,31 +40,31 @@ function getEnv(name: string): string {
 }
 
 Deno.serve(async (req) => {
-  if (req.method !== "POST") {
+  if (req.method !== "GET") { // Changed to GET
     return createErrorResponse("Method Not Allowed", 405);
   }
 
-  let payload: LessonPlanPayload;
+  const url = new URL(req.url);
+  const lessonPlanIdParam = url.searchParams.get("lesson_plan_id");
 
-  try {
-    const body = await req.json();
-    const parseResult = LessonPlanPayloadSchema.safeParse(body);
-
-    if (!parseResult.success) {
-      return createErrorResponse(
-        "Invalid request payload",
-        400,
-        parseResult.error.issues.map((issue) =>
-          `${issue.path.join(".")}: ${issue.message}`
-        ).join("; "),
-      );
-    }
-    payload = parseResult.data;
-  } catch (e) {
+  if (!lessonPlanIdParam) {
     return createErrorResponse(
-      "Invalid JSON in request body",
+      "Missing required query parameter: lesson_plan_id",
       400,
-      (e instanceof Error) ? e.message : "Unknown error parsing JSON",
+      "Example: /get-lesson-plan?lesson_plan_id=YOUR_UUID_HERE",
+    );
+  }
+
+  let lessonPlanId: string;
+  try {
+    lessonPlanId = LessonPlanIdSchema.parse(lessonPlanIdParam);
+  } catch (e: unknown) {
+    return createErrorResponse(
+      "Invalid lesson_plan_id format",
+      400,
+      (e instanceof z.ZodError)
+        ? e.issues.map((issue) => issue.message).join("; ")
+        : "ID must be a valid UUID",
     );
   }
 
@@ -137,26 +121,22 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { data, error } = await supabase.from("lesson_plans").insert({
-      user_id: payload.user_id,
-      main_theme: payload.main_theme,
-      secondary_theme: payload.secondary_theme,
-      objective: payload.objective,
-      subject: payload.subject,
-      age_group: payload.age_group,
-      resources: payload.resources,
-      duration_minutes: payload.duration_minutes,
-      introduction: payload.introduction,
-      steps: payload.steps,
-      evaluation_rubric: payload.evaluation_rubric,
-    })
-      .select()
-      .single();
+    const { data, error } = await supabase.from("lesson_plans").select("*").eq(
+      "id",
+      lessonPlanId,
+    ).single();
 
     if (error) {
-      console.error("Supabase insert error (impersonated user):", error);
+      console.error("Supabase select error (impersonated user):", error);
+      if (error.code === "PGRST116") {
+        return createErrorResponse(
+          "Lesson plan not found",
+          404,
+          `No lesson plan found with ID: ${lessonPlanId} or you do not have permission to view it.`,
+        );
+      }
       return createErrorResponse(
-        "Failed to save lesson plan (RLS check failed)",
+        "Failed to retrieve lesson plan (RLS check failed)",
         403,
         error.message,
       );
@@ -165,11 +145,11 @@ Deno.serve(async (req) => {
     const successBody: SuccessResponse<typeof data> = { data };
     return new Response(JSON.stringify(successBody), {
       headers: JSON_HEADERS,
-      status: 201,
+      status: 200,
     });
-  } catch (e) {
+  } catch (e: unknown) {
     console.error(
-      "Unexpected server error during lesson plan insertion (impersonated):",
+      "Unexpected server error during lesson plan selection (impersonated):",
       (e instanceof Error) ? e.message : e,
     );
     return createErrorResponse(
