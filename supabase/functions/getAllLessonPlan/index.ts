@@ -1,8 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { z } from "npm:zod";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-
-const LessonPlanIdSchema = z.string().uuid("Invalid lesson plan ID format");
 
 interface ErrorResponse {
   message: string;
@@ -42,30 +39,6 @@ function getEnv(name: string): string {
 Deno.serve(async (req) => {
   if (req.method !== "GET") {
     return createErrorResponse("Method Not Allowed", 405);
-  }
-
-  const url = new URL(req.url);
-  const lessonPlanIdParam = url.searchParams.get("lesson_plan_id");
-
-  if (!lessonPlanIdParam) {
-    return createErrorResponse(
-      "Missing required query parameter: lesson_plan_id",
-      400,
-      "Example: /get-lesson-plan?lesson_plan_id=YOUR_UUID_HERE",
-    );
-  }
-
-  let lessonPlanId: string;
-  try {
-    lessonPlanId = LessonPlanIdSchema.parse(lessonPlanIdParam);
-  } catch (e: unknown) {
-    return createErrorResponse(
-      "Invalid lesson_plan_id format",
-      400,
-      (e instanceof z.ZodError)
-        ? e.issues.map((issue) => issue.message).join("; ")
-        : "ID must be a valid UUID",
-    );
   }
 
   const authHeader = req.headers.get("Authorization");
@@ -121,22 +94,12 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { data, error } = await supabase.from("lesson_plans").select("*").eq(
-      "id",
-      lessonPlanId,
-    ).single();
+    const { data, error } = await supabase.from("lesson_plans").select("*");
 
     if (error) {
       console.error("Supabase select error (impersonated user):", error);
-      if (error.code === "PGRST116") {
-        return createErrorResponse(
-          "Lesson plan not found",
-          404,
-          `No lesson plan found with ID: ${lessonPlanId} or you do not have permission to view it.`,
-        );
-      }
       return createErrorResponse(
-        "Failed to retrieve lesson plan (RLS check failed)",
+        "Failed to retrieve lesson plans (RLS check failed)",
         403,
         error.message,
       );
@@ -149,7 +112,7 @@ Deno.serve(async (req) => {
     });
   } catch (e: unknown) {
     console.error(
-      "Unexpected server error during lesson plan selection (impersonated):",
+      "Unexpected server error during lesson plans selection (impersonated):",
       (e instanceof Error) ? e.message : e,
     );
     return createErrorResponse(
@@ -159,3 +122,4 @@ Deno.serve(async (req) => {
     );
   }
 });
+
