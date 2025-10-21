@@ -8,9 +8,9 @@ export const Home = () => {
       <LessonPlanCard
         main_theme="Aquecimento Global"
         secondary_theme="Aquecimento Global"
-        age_group="oitavo ano"
+        age_group="Oitavo ano"
         objective="Ensinar as criancas sobre os perigos do aquecimento global"
-        subject="geografia"
+        subject="Geografia"
         duration={45}
       />
     </div>
