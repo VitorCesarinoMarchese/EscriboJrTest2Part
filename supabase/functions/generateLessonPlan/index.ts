@@ -1,29 +1,55 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { GoogleGenAI } from "npm:@google/genai";
+import { z } from "npm:zod";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-type Request_Payload = {
-  main_theme: string;
-  secondary_theme: string;
-  objective: string;
-  subject: string;
-  age_group: string;
-  resources: string;
-  duration_minutes: number;
-};
+const RequestPayloadSchema = z.object({
+  main_theme: z.string().min(1, "Main theme is required"),
+  secondary_theme: z.string().min(1, "Secondary theme is required"),
+  objective: z.string().min(1, "Objective is required"),
+  subject: z.string().min(1, "Subject is required"),
+  age_group: z.string().min(1, "Age group is required"),
+  resources: z.string().min(1, "Resources are required"),
+  duration_minutes: z.number().int().positive(
+    "Duration must be a positive integer",
+  ),
+});
 
-type Ai_Output = {
-  intro_ludica: string | null;
-  objetivo_bncc: string | null;
-  steps: string | null;
-  evaluation_rubric: string | null;
-  mensagem_erro: string | null;
-};
+type RequestPayload = z.infer<typeof RequestPayloadSchema>;
 
-const jsonHeaders = {
+const AiOutputSchema = z.object({
+  intro_ludica: z.string().nullable(),
+  objetivo_bncc: z.string().nullable(),
+  steps: z.string().nullable(),
+  evaluation_rubric: z.string().nullable(),
+  mensagem_erro: z.string().nullable(),
+});
+
+type AiOutput = z.infer<typeof AiOutputSchema>;
+
+interface ErrorResponse {
+  message: string;
+  details?: string;
+  statusCode: number;
+}
+
+const JSON_HEADERS = {
   "Content-Type": "application/json",
 };
 
-function badRequest(message: string) {
+function createErrorResponse(
+  message: string,
+  statusCode: number,
+  details?: string,
+): Response {
+  const errorBody: ErrorResponse = { message, statusCode };
+  if (details) errorBody.details = details;
+  return new Response(JSON.stringify(errorBody), {
+    status: statusCode,
+    headers: JSON_HEADERS,
+  });
+}
+
+function aiFormattedError(message: string, status: number = 500): Response {
   return new Response(
     JSON.stringify({
       intro_ludica: null,
@@ -31,113 +57,103 @@ function badRequest(message: string) {
       steps: null,
       evaluation_rubric: null,
       mensagem_erro: message,
-    } as Ai_Output),
-    { status: 400, headers: jsonHeaders },
+    } as AiOutput),
+    { status, headers: JSON_HEADERS },
   );
 }
 
-function serverError(message: string, status = 500) {
-  return new Response(
-    JSON.stringify({
-      intro_ludica: null,
-      objetivo_bncc: null,
-      steps: null,
-      evaluation_rubric: null,
-      mensagem_erro: message,
-    } as Ai_Output),
-    { status, headers: jsonHeaders },
-  );
+function getEnv(name: string): string {
+  const value = Deno.env.get(name);
+  if (!value) {
+    throw new Error(`Environment variable ${name} is not set.`);
+  }
+  return value;
 }
 
-function sanitize(input: string) {
+function sanitize(input: string): string {
   return input.replace(/[{}$]/g, "");
 }
 
-Deno.serve(async (req): Promise<Response> => {
+Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405 });
+    return createErrorResponse("Method Not Allowed", 405);
   }
 
-  let payload: Partial<Request_Payload>;
+  let payload: RequestPayload;
   try {
-    payload = await req.json();
-  } catch {
-    return badRequest("Invalid JSON body");
+    const requestBody = await req.json();
+    const parseResult = RequestPayloadSchema.safeParse(requestBody);
+
+    if (!parseResult.success) {
+      return aiFormattedError(
+        `Invalid request payload: ${
+          parseResult.error.issues.map((issue) =>
+            `${issue.path.join(".")}: ${issue.message}`
+          ).join("; ")
+        }`,
+        400,
+      );
+    }
+    payload = parseResult.data;
+  } catch (e: unknown) {
+    return aiFormattedError("Invalid JSON in request body", 400);
   }
 
-  const {
-    main_theme,
-    secondary_theme,
-    objective,
-    subject,
-    age_group,
-    resources,
-    duration_minutes,
-  } = payload;
-
-  if (
-    !main_theme ||
-    !secondary_theme ||
-    !objective ||
-    !subject ||
-    !age_group ||
-    !resources ||
-    !duration_minutes
-  ) {
-    return badRequest("Missing required fields in request payload");
+  let apiKey: string;
+  try {
+    apiKey = getEnv("GEMINI_API_KEY");
+  } catch (e: unknown) {
+    console.error(e);
+    return aiFormattedError(
+      "Server configuration error: Missing GEMINI_API_KEY environment variable",
+      500,
+    );
   }
 
-  const apiKey = Deno.env.get("GEMINI_API_KEY");
-  if (!apiKey) {
-    return serverError("Missing GEMINI_API_KEY environment variable");
-  }
+  const ai = new GoogleGenAI({ apiKey });
 
-  const ai = new GoogleGenAI({ apiKey: Deno.env.get("GEMINI_API_KEY") });
+  const systemInstruction = `
+    Seu nome é Matheus e você é um assistente pedagógico especializado em criar planos de aula lúdicos, você sempre busca facilitar o aprendizado de seus alunos com explicações de fácil entendimento e bem detalhadas. Você sempre monta suas explicações seguindo a risca as regras do BNCC.
 
-  const systemInstruction =
-    `Seu nome é Matheus e você e um assistente pedagógico especializado em criar planos de aula lúdicos, você sempre busca facilitar o aprendizado de seus alunos com explicacoes de facil entendimento e bem detalhadas. você sempre monta suas explicacoes seguindo a risca as regras do bncc.
+    Visando sua responsabilidade e de gerar um plano de aula para um professor iniciante que busca auxílio para iniciar na carreira, gere planos de aula personalizados seguindo suas regras internas. Para construir esse plano siga obrigatoriamente a estrutura abaixo:
 
-    Visando sua responsabiliade e de gerar um plano de aula para um professor iniciante que busca auxilio para iniciar na carreira, gere planos de aula personalizados seguindo suas regras internas. Para construir esse plano siga obrigatoriamente a estrutura abaixo:
-
-    1. criar uma introdução lúdica que apresente o tema de forma criativa e engajadora.
-    2. elaborar um passo a passo detalhado da atividade, incluindo instruções claras e sequenciais.
-    3. gerar uma rubrica de avaliação, com critérios objetivos que permitam à professora avaliar o aprendizado.
-    4. garantir que o objetivo de aprendizagem esteja alinhado à bncc.
+    1. Criar uma introdução lúdica que apresente o tema de forma criativa e engajadora.
+    2. Elaborar um passo a passo detalhado da atividade, incluindo instruções claras e sequenciais.
+    3. Gerar uma rubrica de avaliação, com critérios objetivos que permitam à professora avaliar o aprendizado.
+    4. Garantir que o objetivo de aprendizagem esteja alinhado à BNCC.
 
     Para construir esse plano de aula, você deve se basear obrigatoriamente nas variáveis abaixo:
 
-    * tema principal da atividade:${sanitize(main_theme)}
-    * tema secundário da atividade: ${sanitize(secondary_theme)}
-    * matéria escolar: ${sanitize(subject)}
-    *objetivo de aprendizagem (deve estar alinhado à bncc):  ${
-      sanitize(objective)
-    }
-    * faixa etária ou série escolar:  ${sanitize(age_group)}
-    * recursos disponíveis para a atividade:  ${sanitize(resources)}
-    * duração da atividade em minutos (número inteiro positivo):  ${duration_minutes} minutos
+    * Tema principal da atividade: ${sanitize(payload.main_theme)}
+    * Tema secundário da atividade: ${sanitize(payload.secondary_theme)}
+    * Matéria escolar: ${sanitize(payload.subject)}
+    * Objetivo de aprendizagem (deve estar alinhado à BNCC): ${
+    sanitize(payload.objective)
+  }
+    * Faixa etária ou série escolar: ${sanitize(payload.age_group)}
+    * Recursos disponíveis para a atividade: ${sanitize(payload.resources)}
+    * Duração da atividade em minutos (número inteiro positivo): ${payload.duration_minutes} minutos
 
-    Apos a analise e criacao do plano de aula personalizado o seu Output deve seguir obrigatoriamente o seguinte formato:
-    (Nao e permitido devolver qualquer Output que nao siga o formato abaixo)
+    Após a análise e criação do plano de aula personalizado o seu Output deve seguir obrigatoriamente o seguinte formato:
+    (Não é permitido devolver qualquer Output que não siga o formato abaixo)
 
-    json válido, em um único bloco de texto, com a seguinte estrutura:
+    JSON válido, em um único bloco de texto, com a seguinte estrutura:
 
     {
       "intro_ludica": "texto da introdução criativa e engajadora",
-      "objetivo_bncc": "descrição do objetivo de aprendizagem alinhado à bncc",
-      "steps": "- Passo 1: descrição do primeiro passo\n- Passo 2: descrição do segundo passo\n- Passo 3: descrição do terceiro passo\n ...",
-      "evaluation_rubric": "Critério 1: descrição\nCritério 2: descrição\nCritério 3: descrição\n ...",
+      "objetivo_bncc": "descrição do objetivo de aprendizagem alinhado à BNCC",
+      "steps": "- Passo 1: descrição do primeiro passo\\n- Passo 2: descrição do segundo passo\\n- Passo 3: descrição do terceiro passo\\n ...",
+      "evaluation_rubric": "Critério 1: descrição\\nCritério 2: descrição\\nCritério 3: descrição\\n ...",
       "mensagem_erro": null
     }
 
-    * se houver algum erro ou variável inválida, preencha apenas o campo "mensagem_erro" com a descrição do problema e deixe os demais campos nulos ou vazios.
-    * certifique-se de que o json seja sempre parseável.
-    * o texto deve ser claro, didático e adequado à faixa etária indicada.
+    * Se houver algum erro ou variável inválida, preencha apenas o campo "mensagem_erro" com a descrição do problema e deixe os demais campos nulos ou vazios.
+    * Certifique-se de que o JSON seja sempre parseável.
+    * O texto deve ser claro, didático e adequado à faixa etária indicada.
+  `;
 
-`;
-
-  const prompt = `
-  Gere um plano de aulas personalizados seguindo as suas regras internas.
-`;
+  const prompt =
+    "Gere um plano de aulas personalizados seguindo as suas regras internas.";
 
   try {
     const response = await ai.models.generateContent({
@@ -154,50 +170,54 @@ Deno.serve(async (req): Promise<Response> => {
       },
     });
 
-    const raw = response && response.text ? String(response.text).trim() : "";
+    const rawText = response.data;
 
-    if (!raw) {
+    if (!rawText) {
       console.error("Empty AI response", response);
-      return serverError("Empty response from AI model");
+      return aiFormattedError("Empty response from AI model");
     }
 
-    let parsed: Ai_Output;
+    let parsed: AiOutput;
 
     try {
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON found in AI response");
+      const jsonMatch = rawText.match(/```json\n([\s\S]*?)\n```/);
+      const jsonString = jsonMatch ? jsonMatch[1] : rawText;
 
-      parsed = JSON.parse(raw);
-    } catch (e) {
+      parsed = JSON.parse(jsonString);
+
+      const validationResult = AiOutputSchema.safeParse(parsed);
+      if (!validationResult.success) {
+        console.error(
+          "AI response schema validation failed:",
+          validationResult.error.issues,
+        );
+        return aiFormattedError(
+          "AI response format invalid after parsing",
+          500,
+        );
+      }
+      parsed = validationResult.data;
+    } catch (e: unknown) {
       console.warn(
-        "Unable to locate JSON block in AI response",
-        raw,
+        "Unable to parse or validate JSON from AI response:",
+        (e instanceof Error) ? e.message : e,
+        rawText,
       );
-      return serverError("AI response not in expected JSON format");
-    }
-
-    if (!parsed) {
-      return serverError("AI returned unexpected content");
+      return aiFormattedError("AI response not in expected JSON format", 500);
     }
 
     if (parsed.mensagem_erro) {
-      return badRequest(parsed.mensagem_erro);
+      return aiFormattedError(parsed.mensagem_erro, 400);
     }
 
-    const safeOutput: Ai_Output = {
-      intro_ludica: parsed.intro_ludica ?? null,
-      objetivo_bncc: parsed.objetivo_bncc ?? null,
-      steps: parsed.steps ?? null,
-      evaluation_rubric: parsed.evaluation_rubric ?? null,
-      mensagem_erro: null,
-    };
+    const safeOutput: AiOutput = AiOutputSchema.parse(parsed);
 
     return new Response(
       JSON.stringify(safeOutput),
-      { headers: jsonHeaders, status: 200 },
+      { headers: JSON_HEADERS, status: 200 },
     );
-  } catch (e: any) {
-    console.error("Unhandled error: ", e);
-    return serverError("Internal server error");
+  } catch (e: unknown) {
+    console.error("Unhandled error:", (e instanceof Error) ? e.message : e);
+    return aiFormattedError("Internal server error", 500);
   }
 });
