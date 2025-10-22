@@ -17,6 +17,27 @@ A aplicação recebe informações sobre o tema da aula, o público e o objetivo
 
 - supabase link: https://supabase.com/dashboard/project/yhycmkuhklnxrqbvzkcn
 
+---
+## .env
+
+### frontend
+```env
+VITE_SUPABASE_URL="SEU_SUPABASE_URL"
+VITE_SUPABASE_ANON_KEY="SUA_ANON_KEY"
+```
+### edege functions
+```env
+SUPA_URL="SEU_SUPABASE_URL"
+SUPA_SERVICE_ROLE_KEY="SEU_SERVICE_ROLE_KEY"
+GEMINI_API_KEY="SEU_GEMINI_API_KEY"
+```
+---
+## Desafios Encontrados
+
+Durante o desenvolvimento o maior desafio que eu encontrei foi o Auth-ui do supabase que estava na versao 18 do react enquanto a versao do vite create esta na 19, o que gerava um erro onde a pagina nao carregava, com um erro no useState, o que me fez perder algumas horas pois da minha perspectiva o useState estava correto.
+
+---
+
 ## Modelo de IA Escolhido
 
 Após análise da [documentação oficial do Google AI Studio](https://ai.google.dev/gemini-api/docs/models), o modelo selecionado foi:
