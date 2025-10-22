@@ -33,6 +33,10 @@ interface ErrorResponse {
 }
 
 const JSON_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, apikey, x-client-info",
   "Content-Type": "application/json",
 };
 
@@ -75,6 +79,10 @@ function sanitize(input: string): string {
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: JSON_HEADERS });
+  }
+
   if (req.method !== "POST") {
     return createErrorResponse("Method Not Allowed", 405);
   }
@@ -170,10 +178,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       },
     });
 
-    const rawText = response.data;
+    const rawText = response.text;
 
     if (!rawText) {
-      console.error("Empty AI response", response);
+      console.error("Empty AI response", response.candidates);
       return aiFormattedError("Empty response from AI model");
     }
 

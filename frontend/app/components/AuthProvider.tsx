@@ -20,16 +20,33 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setLoading(false)
+
+      if (session) {
+        createUser(session)
+      }
     })
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
+
+      if (session) {
+        createUser(session)
+      }
     })
 
     return () => subscription.unsubscribe()
   }, [])
+
+  const createUser = async (session: Session) => {
+    const email = session.user.email || ""
+    const name = email.split("@")[0]
+
+    await supabase.from('users').upsert({
+      id: session.user.id,
+      name,
+      role: "user"
+    }, { onConflict: 'id' }).select()
+  }
 
   return (
     <AuthContext.Provider value={{ session, loading }}>

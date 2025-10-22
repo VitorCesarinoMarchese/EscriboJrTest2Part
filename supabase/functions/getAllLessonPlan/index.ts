@@ -12,6 +12,10 @@ interface SuccessResponse<T> {
 }
 
 const JSON_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, apikey, x-client-info",
   "Content-Type": "application/json",
 };
 
@@ -37,6 +41,10 @@ function getEnv(name: string): string {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: JSON_HEADERS });
+  }
+
   if (req.method !== "GET") {
     return createErrorResponse("Method Not Allowed", 405);
   }
@@ -61,8 +69,8 @@ Deno.serve(async (req) => {
 
   let supabase;
   try {
-    const supabaseUrl = getEnv("SUPABASE_URL");
-    const supabaseServiceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+    const supabaseUrl = getEnv("SUPA_URL");
+    const supabaseServiceRoleKey = getEnv("SUPA_SERVICE_ROLE_KEY");
 
     supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
@@ -122,4 +130,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-

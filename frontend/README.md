@@ -1,18 +1,20 @@
-# Welcome to React Router!
+# Frontend
 
-A modern, production-ready template for building full-stack React applications using React Router.
+## Stack
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/remix-run/react-router-templates/tree/main/default)
+- React
+- Supabase
+- React-router
+- TailwindCSS
+- TypeScript
+- Vite
 
-## Features
+## Conta de teste
 
-- 🚀 Server-side rendering
-- ⚡️ Hot Module Replacement (HMR)
-- 📦 Asset bundling and optimization
-- 🔄 Data loading and mutations
-- 🔒 TypeScript by default
-- 🎉 TailwindCSS for styling
-- 📖 [React Router docs](https://reactrouter.com/)
+```
+email: neyivo7396@nrlord.com
+senha: teste01
+```
 
 ## Getting Started
 
