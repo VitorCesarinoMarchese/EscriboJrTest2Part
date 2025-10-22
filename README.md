@@ -15,7 +15,7 @@ A aplicação recebe informações sobre o tema da aula, o público e o objetivo
 ---
 ## Link
 
-- supabase link: https://supabase.com/dashboard/project/fdlebyjvvgtiuwmsgxxw
+- supabase link: https://supabase.com/dashboard/project/yhycmkuhklnxrqbvzkcn
 
 ## Modelo de IA Escolhido
 
