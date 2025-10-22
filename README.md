@@ -13,6 +13,9 @@ A aplicação recebe informações sobre o tema da aula, o público e o objetivo
 - Rubrica de avaliação
 
 ---
+## Link
+
+- supabase link: https://supabase.com/dashboard/project/fdlebyjvvgtiuwmsgxxw
 
 ## Modelo de IA Escolhido
 
